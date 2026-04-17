@@ -6,6 +6,7 @@ function App() {
   const canvasRef = useRef(null);
   const [isFallDetected, setIsFallDetected] = useState(false);
   const [isModelLoading, setIsModelLoading] = useState(true);
+  const [facingMode, setFacingMode] = useState('user'); // 'user' is front, 'environment' is back
 
   const poseLandmarkerRef = useRef(null);
   const requestRef = useRef(null);
@@ -31,7 +32,7 @@ function App() {
         if (active) {
           poseLandmarkerRef.current = poseLandmarker;
           setIsModelLoading(false);
-          startWebcam();
+          startWebcam(facingMode);
         }
       } catch (err) {
         console.error("Error loading MediaPipe:", err);
@@ -50,18 +51,37 @@ function App() {
     };
   }, []);
 
-  const startWebcam = async () => {
+  const startWebcam = async (mode) => {
     try {
+        // Stop any existing tracks
+        if (videoRef.current && videoRef.current.srcObject) {
+            videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+        }
+
         const stream = await navigator.mediaDevices.getUserMedia({ 
-            video: { width: 640, height: 480 } 
+            video: { 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 },
+                facingMode: mode
+            } 
         });
         if (videoRef.current) {
             videoRef.current.srcObject = stream;
-            videoRef.current.addEventListener('loadeddata', predictWebcam);
+            // Use onloadedmetadata to ensure we have dimensions before starting
+            videoRef.current.onloadedmetadata = () => {
+                videoRef.current.play();
+                predictWebcam();
+            };
         }
     } catch (err) {
         console.error("Error accessing webcam: ", err);
     }
+  };
+
+  const toggleCamera = () => {
+    const newMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newMode);
+    startWebcam(newMode);
   };
 
   const predictWebcam = async () => {
@@ -172,13 +192,19 @@ function App() {
           </div>
       )}
 
+      <div className="controls">
+        <button onClick={toggleCamera} className="btn-toggle">
+            Switch to {facingMode === 'user' ? 'Back' : 'Front'} Camera
+        </button>
+      </div>
+
       <div className="video-container">
         <video 
             ref={videoRef} 
             autoPlay 
             playsInline
             muted
-            className="video-feed"
+            className={`video-feed ${facingMode === 'user' ? 'mirror' : ''}`}
         />
         <canvas 
             ref={canvasRef} 
